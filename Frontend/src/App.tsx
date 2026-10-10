@@ -5,17 +5,11 @@ import CategoriaModal from "./components/CategoriaModal";
 import ConfirmModal from "./components/ConfirmModal";
 import ErrorBanner from "./components/ErrorBanner";
 import Navbar from "./components/Navbar";
+import { CATEGORIAS_URL } from "./config";
 import { EMPTY_FORM } from "./constants/categoria";
 import { MESSAGES } from "./constants/messages";
-import {
-  ApiError,
-  createCategoria,
-  deleteCategoria,
-  getCategorias,
-  mensajeDeError,
-  updateCategoria,
-} from "./services/categoriaService";
 import type { Categoria, CategoriaFormData } from "./types/categoria";
+import { jsonRequest, leerDetalle } from "./utils/api";
 import {
   esFormularioCompleto,
   toFormData,
@@ -45,15 +39,18 @@ const App = () => {
 
     const fetchCategorias = async (): Promise<void> => {
       try {
-        const data = await getCategorias();
+        const res = await fetch(CATEGORIAS_URL);
+        if (!res.ok) {
+          const detalle = await leerDetalle(res);
+          if (!ignore) setError(MESSAGES.cargaFallida(detalle));
+          return;
+        }
+        const data = (await res.json()) as Categoria[];
         if (ignore) return;
         setCategorias(data);
         setError(null);
-      } catch (err) {
-        if (ignore) return;
-        const detalle =
-          err instanceof ApiError && err.status !== 0 ? err.message : undefined;
-        setError(MESSAGES.cargaFallida(detalle));
+      } catch {
+        if (!ignore) setError(MESSAGES.cargaFallida());
       } finally {
         if (!ignore) setIsLoading(false);
       }
@@ -93,45 +90,64 @@ const App = () => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Valida el formulario y lo guarda con `guardar`. Devuelve la categoría guardada, o null si hubo un error (ya mostrado en formError).
-  const enviarFormulario = async (
-    guardar: (datos: CategoriaFormData) => Promise<Categoria>,
-  ): Promise<Categoria | null> => {
+  // Devuelve los datos listos para enviar, o null si falta algún campo (el error ya queda en formError).
+  const validarFormulario = (): CategoriaFormData | null => {
     const datos = trimFormData(formData);
     if (!esFormularioCompleto(datos)) {
       setFormError(MESSAGES.formularioIncompleto);
       return null;
     }
+    return datos;
+  };
+
+  const handleCreate = async (): Promise<void> => {
+    const datos = validarFormulario();
+    if (!datos) return;
 
     setIsSaving(true);
     setFormError(null);
     try {
-      return await guardar(datos);
-    } catch (err) {
-      setFormError(mensajeDeError(err));
-      return null;
+      const res = await fetch(CATEGORIAS_URL, jsonRequest("POST", datos));
+      if (!res.ok) {
+        setFormError(await leerDetalle(res));
+        return;
+      }
+      const creada = (await res.json()) as Categoria;
+      setCategorias((prev) => [...prev, creada]);
+      closeModal();
+    } catch {
+      setFormError(MESSAGES.sinConexion);
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleCreate = async (): Promise<void> => {
-    const creada = await enviarFormulario(createCategoria);
-    if (!creada) return;
-    setCategorias((prev) => [...prev, creada]);
-    closeModal();
-  };
-
   const handleUpdate = async (): Promise<void> => {
     if (!selectedCategoria) return;
-    const actualizada = await enviarFormulario((datos) =>
-      updateCategoria(selectedCategoria.id, datos),
-    );
-    if (!actualizada) return;
-    setCategorias((prev) =>
-      prev.map((c) => (c.id === actualizada.id ? actualizada : c)),
-    );
-    closeModal();
+    const datos = validarFormulario();
+    if (!datos) return;
+
+    setIsSaving(true);
+    setFormError(null);
+    try {
+      const res = await fetch(
+        `${CATEGORIAS_URL}/${selectedCategoria.id}`,
+        jsonRequest("PUT", datos),
+      );
+      if (!res.ok) {
+        setFormError(await leerDetalle(res));
+        return;
+      }
+      const actualizada = (await res.json()) as Categoria;
+      setCategorias((prev) =>
+        prev.map((c) => (c.id === actualizada.id ? actualizada : c)),
+      );
+      closeModal();
+    } catch {
+      setFormError(MESSAGES.sinConexion);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const openDelete = (categoria: Categoria): void => {
@@ -144,20 +160,20 @@ const App = () => {
   const handleDelete = async (): Promise<void> => {
     if (!categoriaToDelete) return;
     const { id, nombre } = categoriaToDelete;
-    const quitarDeLaLista = () =>
-      setCategorias((prev) => prev.filter((c) => c.id !== id));
 
     setIsDeleting(true);
     try {
-      await deleteCategoria(id);
-      quitarDeLaLista();
-    } catch (err) {
+      const res = await fetch(`${CATEGORIAS_URL}/${id}`, { method: "DELETE" });
       // 404: ya no existe en el servidor, así que también se saca de la lista.
-      if (err instanceof ApiError && err.status === 404) {
-        quitarDeLaLista();
+      if (res.ok || res.status === 404) {
+        setCategorias((prev) => prev.filter((c) => c.id !== id));
       } else {
-        setDeleteError(MESSAGES.eliminarFallido(nombre, mensajeDeError(err)));
+        setDeleteError(
+          MESSAGES.eliminarFallido(nombre, await leerDetalle(res)),
+        );
       }
+    } catch {
+      setDeleteError(MESSAGES.eliminarFallido(nombre, MESSAGES.sinConexion));
     } finally {
       setIsDeleting(false);
       closeDelete();

@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlmodel import Session, SQLModel, create_engine
@@ -10,7 +11,10 @@ from app.producto import model as _producto_model  # noqa: F401
 class Settings(BaseSettings):
     database_url: str
 
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Ruta absoluta a Backend/.env: la app arranca igual desde cualquier directorio.
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).resolve().parents[2] / ".env", extra="ignore"
+    )
 
 
 settings = Settings()
