@@ -1,0 +1,290 @@
+# API Productos — REST Client (extensión humao.rest-client de VS Code)
+#
+# Cómo usarlo:
+#   1. Levantar la DB (docker compose up -d) y el backend (fastapi dev app/main.py).
+#   2. Con la base vacía, ejecutar los requests de arriba hacia abajo ("Send Request").
+#   3. Cada request indica en "Esperado" el código de respuesta correcto.
+#
+# Los ids se toman de las respuestas anteriores ({{nombre.response.body.id}}), así que no
+# hay ids hardcodeados. El archivo termina borrando todo lo que creó: se puede re-ejecutar.
+# Los únicos ids fijos (999999) son a propósito: no existen, para probar los 404.
+
+@baseUrl = http://localhost:8000
+
+###############################################################################
+# 1. CATEGORÍAS
+###############################################################################
+
+### Crear categoría 1
+# Esperado: 201
+# @name crearCategoria1
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "Pizzas",
+  "descripcion": "Pizzas al horno de piedra"
+}
+
+### Crear categoría 2
+# Esperado: 201
+# @name crearCategoria2
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "Bebidas",
+  "descripcion": "Gaseosas, cervezas y vinos"
+}
+
+### Crear categoría 3
+# Esperado: 201
+# @name crearCategoria3
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "Postres",
+  "descripcion": "Dulces caseros"
+}
+
+### Listar categorías
+# Esperado: 200 (array ordenado por id)
+GET {{baseUrl}}/categorias
+
+### Obtener categoría 1
+# Esperado: 200
+GET {{baseUrl}}/categorias/{{crearCategoria1.response.body.id}}
+
+### Actualizar categoría 1 (PUT: reemplazo completo)
+# Esperado: 200
+PUT {{baseUrl}}/categorias/{{crearCategoria1.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "Pizzas Artesanales",
+  "descripcion": "Masa madre y 48 horas de fermentación"
+}
+
+### Actualizar categoría 1 con el nombre de otra categoría
+# Esperado: 409 (nombre duplicado)
+PUT {{baseUrl}}/categorias/{{crearCategoria1.response.body.id}}
+Content-Type: application/json
+
+{
+  "nombre": "bebidas",
+  "descripcion": "Intento de duplicar"
+}
+
+### Crear categoría con nombre repetido (sin distinguir mayúsculas)
+# Esperado: 409
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "BEBIDAS",
+  "descripcion": "Duplicada"
+}
+
+### Crear categoría inválida: nombre vacío
+# Esperado: 422
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "   ",
+  "descripcion": "Nombre solo con espacios"
+}
+
+### Crear categoría inválida: falta la descripción
+# Esperado: 422
+POST {{baseUrl}}/categorias
+Content-Type: application/json
+
+{
+  "nombre": "Sin descripción"
+}
+
+### Obtener categoría inexistente
+# Esperado: 404
+GET {{baseUrl}}/categorias/999999
+
+### Eliminar categoría 3
+# Esperado: 204
+DELETE {{baseUrl}}/categorias/{{crearCategoria3.response.body.id}}
+
+### Obtener la categoría 3 ya eliminada
+# Esperado: 404
+GET {{baseUrl}}/categorias/{{crearCategoria3.response.body.id}}
+
+###############################################################################
+# 2. PRODUCTOS
+###############################################################################
+
+### Crear producto 1 (con descripción y varias imágenes)
+# Esperado: 201
+# @name crearProducto1
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "Muzzarella",
+  "descripcion": "Salsa de tomate, muzzarella y orégano",
+  "precio_base": "8500.50",
+  "imagen_url": [
+    "https://example.com/img/muzzarella-1.jpg",
+    "https://example.com/img/muzzarella-2.jpg"
+  ],
+  "disponible": true
+}
+
+### Crear producto 2 (sin descripción ni imágenes)
+# Esperado: 201 (descripcion: null, imagen_url: [])
+# @name crearProducto2
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "Cerveza IPA",
+  "precio_base": "3200"
+}
+
+### Listar productos
+# Esperado: 200 (array ordenado por id)
+GET {{baseUrl}}/productos
+
+### Obtener producto 1
+# Esperado: 200
+GET {{baseUrl}}/productos/{{crearProducto1.response.body.id}}
+
+### Actualizar parcialmente el producto 1 (PATCH)
+# Esperado: 200 (cambia solo "disponible"; el resto queda igual)
+PATCH {{baseUrl}}/productos/{{crearProducto1.response.body.id}}
+Content-Type: application/json
+
+{
+  "disponible": false
+}
+
+### Crear producto con URL de imagen inválida
+# Esperado: 422
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "Producto inválido",
+  "precio_base": "1000",
+  "imagen_url": ["no-es-una-url"]
+}
+
+### Crear producto con precio inválido
+# Esperado: 422 (precio_base debe ser numérico: "1500" o "1500.50")
+POST {{baseUrl}}/productos
+Content-Type: application/json
+
+{
+  "nombre": "Producto inválido",
+  "precio_base": "mil quinientos"
+}
+
+### Actualizar producto con precio inválido
+# Esperado: 422
+PATCH {{baseUrl}}/productos/{{crearProducto1.response.body.id}}
+Content-Type: application/json
+
+{
+  "precio_base": "abc"
+}
+
+### Obtener producto inexistente
+# Esperado: 404
+GET {{baseUrl}}/productos/999999
+
+### Actualizar producto inexistente
+# Esperado: 404
+PATCH {{baseUrl}}/productos/999999
+Content-Type: application/json
+
+{
+  "disponible": true
+}
+
+###############################################################################
+# 3. RELACIÓN PRODUCTO ↔ CATEGORÍA
+###############################################################################
+
+### Asociar producto 1 con categoría 1
+# Esperado: 201
+POST {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias/{{crearCategoria1.response.body.id}}
+
+### Asociar producto 1 con categoría 2
+# Esperado: 201
+POST {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias/{{crearCategoria2.response.body.id}}
+
+### Asociar de nuevo producto 1 con categoría 1
+# Esperado: 409 (ya asociada)
+POST {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias/{{crearCategoria1.response.body.id}}
+
+### Asociar con una categoría inexistente
+# Esperado: 404
+POST {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias/999999
+
+### Asociar con un producto inexistente
+# Esperado: 404
+POST {{baseUrl}}/productos/999999/categorias/{{crearCategoria1.response.body.id}}
+
+### Listar las categorías del producto 1
+# Esperado: 200 (2 categorías)
+GET {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias
+
+### Desasociar producto 1 de la categoría 2
+# Esperado: 204
+DELETE {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias/{{crearCategoria2.response.body.id}}
+
+### Desasociar otra vez (ya no está asociada)
+# Esperado: 404
+DELETE {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias/{{crearCategoria2.response.body.id}}
+
+### Listar las categorías del producto 1 tras desasociar
+# Esperado: 200 (solo queda 1 categoría)
+GET {{baseUrl}}/productos/{{crearProducto1.response.body.id}}/categorias
+
+###############################################################################
+# 4. DEMO DE CASCADE
+###############################################################################
+
+### Asociar producto 2 con categoría 2
+# Esperado: 201
+POST {{baseUrl}}/productos/{{crearProducto2.response.body.id}}/categorias/{{crearCategoria2.response.body.id}}
+
+### Eliminar la categoría 2 (está asociada al producto 2)
+# Esperado: 204 (se borra la relación en cascada; el producto sobrevive)
+DELETE {{baseUrl}}/categorias/{{crearCategoria2.response.body.id}}
+
+### El producto 2 sigue existiendo
+# Esperado: 200
+GET {{baseUrl}}/productos/{{crearProducto2.response.body.id}}
+
+### El producto 2 ya no tiene la categoría eliminada
+# Esperado: 200 (array vacío)
+GET {{baseUrl}}/productos/{{crearProducto2.response.body.id}}/categorias
+
+###############################################################################
+# 5. LIMPIEZA (deja la base como estaba, para poder re-ejecutar el archivo)
+###############################################################################
+
+### Eliminar producto 1 (tiene la categoría 1 asociada: se borra la relación en cascada)
+# Esperado: 204
+DELETE {{baseUrl}}/productos/{{crearProducto1.response.body.id}}
+
+### Eliminar producto 2
+# Esperado: 204
+DELETE {{baseUrl}}/productos/{{crearProducto2.response.body.id}}
+
+### Eliminar el producto 2 otra vez
+# Esperado: 404
+DELETE {{baseUrl}}/productos/{{crearProducto2.response.body.id}}
+
+### Eliminar categoría 1
+# Esperado: 204
+DELETE {{baseUrl}}/categorias/{{crearCategoria1.response.body.id}}
